@@ -1,3 +1,16 @@
+/*
+ * Names: Jordan McGowan (ID: 9068269662), Brad Trapp (ID: 9067852294), Maxwell Beckers (ID: 9066226912)
+ * Course: CS564
+ * Section: 1 
+ * Project: 3
+ * Emails: jmmcgowan@wisc.edu, bbtrapp@wisc.edu, mbeckers@wisc.edu
+ * 
+ * This file is the testing location for the Badger DB. It houses the tests
+ * to be used on the buffer.cpp file. 
+ * 
+ */
+
+
 #include <iostream>
 #include <stdlib.h>
 //#include <stdio.h>
@@ -319,3 +332,5 @@ void test6()
 
 	bufMgr->flushFile(file1ptr);
 }
+
+

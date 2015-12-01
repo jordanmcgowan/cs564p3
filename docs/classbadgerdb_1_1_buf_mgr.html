@@ -150,23 +150,23 @@ Public Attributes</h2></td></tr>
 <div class="memdoc">
 <p>Constructor of <a class="el" href="classbadgerdb_1_1_buf_mgr.html" title="The central class which manages the buffer pool including frame allocation and deallocation to pages ...">BufMgr</a> class </p>
 
-<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00019">19</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
+<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00035">35</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
 <div class="fragment"><pre class="fragment">  : numBufs(bufs) {
-  bufDescTable = <span class="keyword">new</span> BufDesc[bufs];
+    bufDescTable = <span class="keyword">new</span> BufDesc[bufs];
 
-  <span class="keywordflow">for</span> (<a class="code" href="namespacebadgerdb.html#a1e7378fbefaea050a47e6cde929e9c01" title="Identifier for a frame in buffer pool.">FrameId</a> i = 0; i &lt; bufs; i++) 
-  {
-    bufDescTable[i].frameNo = i;
-    bufDescTable[i].valid = <span class="keyword">false</span>;
+    <span class="keywordflow">for</span> (<a class="code" href="namespacebadgerdb.html#a1e7378fbefaea050a47e6cde929e9c01" title="Identifier for a frame in buffer pool.">FrameId</a> i = 0; i &lt; bufs; i++) 
+    {
+      bufDescTable[i].frameNo = i;
+      bufDescTable[i].valid = <span class="keyword">false</span>;
+    }
+
+    <a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a> = <span class="keyword">new</span> Page[bufs];
+
+    <span class="keywordtype">int</span> htsize = ((((int) (bufs * 1.2))*2)/2)+1;
+    hashTable = <span class="keyword">new</span> BufHashTbl (htsize);  <span class="comment">// allocate the buffer hash table</span>
+
+    clockHand = bufs - 1;
   }
-
-  <a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a> = <span class="keyword">new</span> Page[bufs];
-
-  <span class="keywordtype">int</span> htsize = ((((int) (bufs * 1.2))*2)/2)+1;
-  hashTable = <span class="keyword">new</span> BufHashTbl (htsize);  <span class="comment">// allocate the buffer hash table</span>
-
-  clockHand = bufs - 1;
-}
 </pre></div>
 </div>
 </div>
@@ -185,9 +185,21 @@ Public Attributes</h2></td></tr>
 <div class="memdoc">
 <p>Destructor of <a class="el" href="classbadgerdb_1_1_buf_mgr.html" title="The central class which manages the buffer pool including frame allocation and deallocation to pages ...">BufMgr</a> class </p>
 
-<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00038">38</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
-<div class="fragment"><pre class="fragment">                {
-}
+<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00053">53</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
+<div class="fragment"><pre class="fragment">                  {
+    <span class="comment">//Steps thru all of the buffers</span>
+    <span class="keywordflow">for</span>(std::uint32_t i = 0; i &lt; numBufs; i++){
+      <span class="comment">//Checks to see if the buffer page is dirty</span>
+      <span class="keywordflow">if</span>(bufDescTable[i].dirty){
+        <span class="comment">//Writes the page to memory</span>
+        <a class="code" href="classbadgerdb_1_1_buf_mgr.html#acc61d1985720411ebb76e70f702827d3">flushFile</a>(bufDescTable[i].file);    
+      }
+    }
+    <span class="comment">//Deallocates buffer pool and bufDescTable (and hashtable per Piazza post 253)</span>
+    <span class="keyword">delete</span>[] <a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a>;
+    <span class="keyword">delete</span>[] bufDescTable;
+    <span class="keyword">delete</span> hashTable;
+  }
 </pre></div>
 </div>
 </div>
@@ -232,9 +244,32 @@ Public Attributes</h2></td></tr>
   </dd>
 </dl>
 
-<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00064">64</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
-<div class="fragment"><pre class="fragment">{
-}
+<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00173">173</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
+<div class="fragment"><pre class="fragment">                                                               {
+    <span class="comment">//&quot;Allocate an empty page in the specified file by invoking the file-&gt;allocatePage() method&quot;</span>
+    Page newpage = file-&gt;allocatePage();
+
+    <span class="comment">//&quot;allocBuf() is called to obtain a buffer pool frame&quot;</span>
+    <a class="code" href="namespacebadgerdb.html#a1e7378fbefaea050a47e6cde929e9c01" title="Identifier for a frame in buffer pool.">FrameId</a> fnum;
+    allocBuf(fnum);
+
+    <a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a>[fnum] = newpage;
+    <span class="comment">//&quot;Page number of the newly allocated page to the caller via the pageNo parameter&quot; (needed for insert() below)</span>
+    pageNo = newpage.<a class="code" href="classbadgerdb_1_1_page.html#af55a0b44876bff4d513bdbed8bc8c5a3">page_number</a>();
+    <span class="comment">//&quot;Pointer to the buffer frame allocated for the page via the page parameter&quot;</span>
+    page = &amp;<a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a>[fnum];
+
+    <span class="comment">//&quot;An entry is inserted into the hash table and Set() is invoked on the frame to set it up properly&quot;</span>
+    <span class="keywordflow">try</span>{
+      hashTable-&gt;<a class="code" href="classbadgerdb_1_1_buf_hash_tbl.html#a92480d460ddb07e8b04ab7f99107e334">insert</a>(file, pageNo, fnum);
+      bufDescTable[fnum].Set(file, pageNo);
+    }
+    <span class="keywordflow">catch</span>(HashNotFoundException e){
+      <span class="comment">//Does nothing here, just catching friendly exceptions</span>
+    }
+
+
+  }
 </pre></div>
 </div>
 </div>
@@ -293,6 +328,25 @@ Public Attributes</h2></td></tr>
   </dd>
 </dl>
 
+<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00199">199</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
+<div class="fragment"><pre class="fragment">                                                         {
+    <a class="code" href="namespacebadgerdb.html#a1e7378fbefaea050a47e6cde929e9c01" title="Identifier for a frame in buffer pool.">FrameId</a> fnum;
+
+    <span class="comment">//Throws HashNotFound if cannot find</span>
+    <span class="keywordflow">try</span>{
+      hashTable-&gt;<a class="code" href="classbadgerdb_1_1_buf_hash_tbl.html#a23b1030dd244d0d956176a596aae0210">lookup</a>(file, pageNo, fnum);
+      
+      <span class="comment">//Clear and remove </span>
+      bufDescTable[fnum].Clear();
+      hashTable-&gt;<a class="code" href="classbadgerdb_1_1_buf_hash_tbl.html#a5739cc2b22c74d62e25c9d3d316144d8">remove</a>(file, pageNo);
+
+      file-&gt;deletePage(pageNo);
+    }
+    <span class="keywordflow">catch</span>(HashNotFoundException e){
+      <span class="comment">//&quot;Does nothing if page is not found in the hash table lookup&quot;</span>
+    }
+  }
+</pre></div>
 </div>
 </div>
 <a class="anchor" id="acc61d1985720411ebb76e70f702827d3"></a><!-- doxytag: member="badgerdb::BufMgr::flushFile" ref="acc61d1985720411ebb76e70f702827d3" args="(const File *file)" -->
@@ -324,9 +378,42 @@ Public Attributes</h2></td></tr>
   </dd>
 </dl>
 
-<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00060">60</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
-<div class="fragment"><pre class="fragment">{
-}
+<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00217">217</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
+<div class="fragment"><pre class="fragment">                                        {
+    <span class="comment">//&quot;Should scan bufTable for pages belonging to the file&quot;</span>
+    <span class="keywordflow">for</span>(std::uint32_t i = 0; i &lt; numBufs; i++){
+      <span class="keywordflow">if</span>(bufDescTable[i].file == file){
+        BufDesc* tmpbuf = &amp;(bufDescTable[i]);
+
+        <span class="comment">//Write the page to disk if it is dirty</span>
+        <span class="keywordflow">if</span>(tmpbuf-&gt;dirty){
+          tmpbuf-&gt;file-&gt;writePage(<a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a>[i]);
+          tmpbuf-&gt;dirty = <span class="keyword">false</span>;
+        }
+
+        <span class="comment">//Throw an exception if the page has been pinned previously </span>
+        <span class="keywordflow">if</span>(bufDescTable[i].pinCnt != 0){
+          <span class="keywordflow">throw</span> PagePinnedException(file-&gt;filename(), tmpbuf-&gt;pageNo, i);
+        }
+
+        <span class="comment">//Throw an exception if the page is not valid</span>
+        <span class="keywordflow">if</span>(!bufDescTable[i].valid){
+          <span class="keywordflow">throw</span> BadBufferException(i, tmpbuf-&gt;dirty, tmpbuf-&gt;valid, tmpbuf-&gt;refbit);
+        }
+        
+        <span class="comment">//&quot;An entry is inserted into the hash table and Set() is invoked on the frame to set it up properly&quot;</span>
+        <span class="keywordflow">try</span>{
+          <span class="comment">//&quot;Remove the page from the hashtable (whether the page is clean or dirty)&quot;</span>
+          hashTable-&gt;<a class="code" href="classbadgerdb_1_1_buf_hash_tbl.html#a5739cc2b22c74d62e25c9d3d316144d8">remove</a>(file, tmpbuf-&gt;pageNo);
+          <span class="comment">//&quot;Invoke the Clear() method of BufDesc for the page frame&quot;</span>
+          tmpbuf-&gt;Clear();
+        }
+        <span class="keywordflow">catch</span>(HashNotFoundException e){
+          <span class="comment">//Does nothing here, just catching friendly exceptions</span>
+        }
+      }
+    } 
+  }
 </pre></div>
 </div>
 </div>
@@ -368,23 +455,23 @@ Public Attributes</h2></td></tr>
 <div class="memdoc">
 <p>Print member variable values. </p>
 
-<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00068">68</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
-<div class="fragment"><pre class="fragment">{
-  BufDesc* tmpbuf;
-  <span class="keywordtype">int</span> validFrames = 0;
-  
-  <span class="keywordflow">for</span> (std::uint32_t i = 0; i &lt; numBufs; i++)
-  {
-    tmpbuf = &amp;(bufDescTable[i]);
-    std::cout &lt;&lt; <span class="stringliteral">&quot;FrameNo:&quot;</span> &lt;&lt; i &lt;&lt; <span class="stringliteral">&quot; &quot;</span>;
-    tmpbuf-&gt;Print();
+<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00256">256</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
+<div class="fragment"><pre class="fragment">  {
+    BufDesc* tmpbuf;
+    <span class="keywordtype">int</span> validFrames = 0;
 
-    <span class="keywordflow">if</span> (tmpbuf-&gt;valid == <span class="keyword">true</span>)
-      validFrames++;
+    <span class="keywordflow">for</span> (std::uint32_t i = 0; i &lt; numBufs; i++)
+    {
+      tmpbuf = &amp;(bufDescTable[i]);
+      std::cout &lt;&lt; <span class="stringliteral">&quot;FrameNo:&quot;</span> &lt;&lt; i &lt;&lt; <span class="stringliteral">&quot; &quot;</span>;
+      tmpbuf-&gt;Print();
+
+      <span class="keywordflow">if</span> (tmpbuf-&gt;valid == <span class="keyword">true</span>)
+        validFrames++;
+    }
+
+    std::cout &lt;&lt; <span class="stringliteral">&quot;Total Number of Valid Frames:&quot;</span> &lt;&lt; validFrames &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;
   }
-
-  std::cout &lt;&lt; <span class="stringliteral">&quot;Total Number of Valid Frames:&quot;</span> &lt;&lt; validFrames &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;
-}
 </pre></div>
 </div>
 </div>
@@ -428,9 +515,38 @@ Public Attributes</h2></td></tr>
   </dd>
 </dl>
 
-<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00051">51</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
-<div class="fragment"><pre class="fragment">{
-}
+<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00119">119</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
+<div class="fragment"><pre class="fragment">                                                                   {
+
+    <a class="code" href="namespacebadgerdb.html#a1e7378fbefaea050a47e6cde929e9c01" title="Identifier for a frame in buffer pool.">FrameId</a> fnum;
+
+    <span class="comment">//Check to see if the page is in the buffer pool</span>
+    <span class="keywordflow">try</span>{
+      hashTable-&gt;<a class="code" href="classbadgerdb_1_1_buf_hash_tbl.html#a23b1030dd244d0d956176a596aae0210">lookup</a>(file, pageNo, fnum);
+      <span class="comment">//Case 2: Page is in the buffer pool</span>
+      <span class="comment">//&quot;Set the appropriate refbit&quot;</span>
+      bufDescTable[fnum].refbit = <span class="keyword">true</span>;
+      <span class="comment">//&quot;Increment the pinCnt for the page&quot;</span>
+      bufDescTable[fnum].pinCnt++;
+      <span class="comment">//&quot;return a pointer to the frame containing the page via the page parameter.&quot;</span>
+      page = &amp;<a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a>[fnum];
+    }
+    <span class="keywordflow">catch</span>(HashNotFoundException e){
+      <span class="comment">//Case 1: Page is not in the buffer</span>
+      <span class="comment">//&quot;Call allocBuf() to allocate a buffer frame&quot;</span>
+      allocBuf(fnum);
+      Page newpage;
+      <span class="comment">//&quot;Call the method file-&gt;readPage() to read the page from disk into the buffer pool&quot;</span>
+      newpage = file-&gt;readPage(pageNo);
+      <a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a>[fnum] = newpage;
+      <span class="comment">//&quot;Insert the page into the hashtable&quot;</span>
+      hashTable-&gt;<a class="code" href="classbadgerdb_1_1_buf_hash_tbl.html#a92480d460ddb07e8b04ab7f99107e334">insert</a>(file, pageNo, fnum);
+      <span class="comment">//&quot;Invoke Set() on the frame to set it up properly&quot;</span>
+      bufDescTable[fnum].Set(file, pageNo);
+      <span class="comment">//&quot;Return a pointer to the frame containing the page via the page parameter&quot;</span>
+      page = &amp;<a class="code" href="classbadgerdb_1_1_buf_mgr.html#aa498047fc351652d0bc7eabf6cb62ab0">bufPool</a>[fnum];
+    }
+  }
 </pre></div>
 </div>
 </div>
@@ -480,9 +596,28 @@ Public Attributes</h2></td></tr>
   </dd>
 </dl>
 
-<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00056">56</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
-<div class="fragment"><pre class="fragment">{
-}
+<p>Definition at line <a class="el" href="buffer_8cpp_source.html#l00151">151</a> of file <a class="el" href="buffer_8cpp_source.html">buffer.cpp</a>.</p>
+<div class="fragment"><pre class="fragment">                                                                         {
+    <a class="code" href="namespacebadgerdb.html#a1e7378fbefaea050a47e6cde929e9c01" title="Identifier for a frame in buffer pool.">FrameId</a> fnum;
+    <span class="comment">//Throws HashNotFound if cannot find</span>
+    <span class="keywordflow">try</span>{
+      hashTable-&gt;<a class="code" href="classbadgerdb_1_1_buf_hash_tbl.html#a23b1030dd244d0d956176a596aae0210">lookup</a>(file, pageNo, fnum);
+
+      <span class="comment">//Setting dirty bit if pageNo is dirty</span>
+      <span class="keywordflow">if</span>(dirty){
+        bufDescTable[fnum].dirty = <span class="keyword">true</span>;
+      }
+      <span class="comment">//Checks to see if the page is pinned</span>
+      <span class="keywordflow">if</span>(bufDescTable[fnum].pinCnt == 0){
+        <span class="keywordflow">throw</span> PageNotPinnedException(file-&gt;filename(), pageNo, fnum);
+      }
+      <span class="comment">//&quot;Decrements the pinCnt of the frame containing (file, PageNo)&quot;</span>
+      bufDescTable[fnum].pinCnt--;
+    }
+    <span class="keywordflow">catch</span>(HashNotFoundException e){
+      <span class="comment">//&quot;Does nothing if page is not found in the hash table lookup&quot;</span>
+    }
+  }
 </pre></div>
 </div>
 </div>
@@ -504,8 +639,8 @@ Public Attributes</h2></td></tr>
 </div>
 </div>
 <hr/>The documentation for this class was generated from the following files:<ul>
-<li>/afs/cs.wisc.edu/p/course/cs564-jignesh/public/html/projects/BadgerDB/bufmgr/src/<a class="el" href="buffer_8h_source.html">buffer.h</a></li>
-<li>/afs/cs.wisc.edu/p/course/cs564-jignesh/public/html/projects/BadgerDB/bufmgr/src/<a class="el" href="buffer_8cpp_source.html">buffer.cpp</a></li>
+<li>/afs/cs.wisc.edu/u/m/c/mcgowan/private/cs564/BufMgr/src/<a class="el" href="buffer_8h_source.html">buffer.h</a></li>
+<li>/afs/cs.wisc.edu/u/m/c/mcgowan/private/cs564/BufMgr/src/<a class="el" href="buffer_8cpp_source.html">buffer.cpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- window showing the filter options -->
@@ -525,7 +660,7 @@ Public Attributes</h2></td></tr>
 
 
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jan 30 2013 14:17:57 for BadgerDB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Sun Nov 22 2015 20:22:32 for BadgerDB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.7.6.1
 </small></address>
